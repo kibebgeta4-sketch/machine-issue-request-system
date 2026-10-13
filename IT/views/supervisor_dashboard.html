@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Supervisor Desk | Machine Care</title><link rel="stylesheet" href="/app.css"><script src="/app.js" defer></script></head>
+<body data-page="supervisor"><div class="shell">
+  <header class="topbar"><a class="brand" href="/supervisor"><span class="brand-mark">M</span><span>Machine Care<small>Maintenance operations</small></span></a><nav class="nav"><a class="active" href="/supervisor">Requests</a></nav><div class="topbar-right"><span id="user-label" class="user-label"></span><button id="logout" class="btn secondary small">Sign out</button></div></header>
+  <header class="page-head"><div><p class="eyebrow">Line supervisor</p><h1>Machine issue requests</h1><p>Report a breakdown and follow repair progress.</p></div></header>
+  <div id="alert" class="alert"></div>
+  <main class="content-grid">
+    <section class="panel"><div class="panel-heading"><h2>New request</h2><small>TD_OF_004</small></div><form id="request-form">
+      <div class="field"><label for="department_id">Section</label><select id="department_id" name="department_id" required><option value="">Select section</option></select></div>
+      <div class="field-row"><div class="field"><label for="machine_id">Machine name</label><select id="machine_id" disabled required><option value="">Select section first</option></select><input id="selected-machine-id" name="machine_id" type="hidden"></div><div class="field"><label for="machine-code-single">Machine code · Tag number</label><div id="machine-code-control"><input id="machine-code-single" readonly placeholder="Select a machine" disabled><select id="machine-code-select" class="hidden" disabled aria-label="Machine code"><option value="">Select code</option></select></div><input id="selected-machine-code" name="machine_code" type="hidden"></div></div>
+      <div class="field"><label for="operator_name">Operator name</label><input id="operator_name" name="operator_name" required maxlength="160"></div>
+      <div class="field"><span class="field-label">Is production stopped? · ምርት ቆሟል</span><div class="radio-row"><label class="choice"><input type="radio" name="is_production_stopped" value="true" required> አዎ · Yes</label><label class="choice"><input type="radio" name="is_production_stopped" value="false"> አይደለም · No</label></div></div>
+      <div class="field"><span class="field-label">Breakdown category</span><div class="check-row"><label class="choice"><input type="radio" name="breakdown_category" value="MECHANICAL" required> Mechanical</label><label class="choice"><input type="radio" name="breakdown_category" value="ELECTRICAL"> Electrical</label><label class="choice"><input type="radio" name="breakdown_category" value="OTHER"> Other</label></div></div>
+      <div class="field"><label for="breakdown_details">Breakdown details · የብልሽት ዝርዝር</label><textarea id="breakdown_details" name="breakdown_details" required></textarea></div>
+      <button class="btn" type="submit">Submit request <span aria-hidden="true">→</span></button>
+    </form></section>
+    <section class="panel"><div class="panel-heading"><h2>Live request status</h2><small>Refreshes every 30 seconds</small></div><div class="table-wrap"><table><thead><tr><th>Work order</th><th>Machine</th><th>Department</th><th>Requested</th><th>Status</th><th>Category</th><th>Technician</th></tr></thead><tbody id="request-rows"><tr><td colspan="7" class="empty">Loading requests…</td></tr></tbody></table></div></section>
+  </main><div class="footer-note">Work order status is updated by the maintenance team.</div>
+</div></body></html>

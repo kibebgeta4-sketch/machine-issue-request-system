@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in | Machine Care</title><link rel="stylesheet" href="/app.css"><script src="/app.js" defer></script></head>
+<body data-page="login">
+  <main class="login-shell">
+    <aside class="login-aside">
+      <a class="brand" href="/"><span class="brand-mark">M</span><span>Machine Care<small>Maintenance operations</small></span></a>
+      <div class="login-message"><p class="eyebrow">Plant operations · Issue desk</p><h1>Keep the line moving.</h1><p>One place to report breakdowns, coordinate repairs, and understand machine downtime.</p></div>
+      <div class="login-foot">TD_OF_004 · Maintenance request workflow</div>
+    </aside>
+    <section class="login-main"><form class="login-form" id="login-form">
+      <p class="eyebrow">Welcome back</p><h2>Sign in</h2><p>Use your assigned account to continue.</p>
+      <div id="alert" class="alert"></div>
+      <div class="field"><label for="username">Username or email</label><input id="username" name="username" type="text" autocomplete="username" required></div>
+      <div class="field"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required></div>
+      <div class="field"><label for="role">Role</label><select id="role" name="role" required><option value="">Select your role</option><option value="LINE_SUPERVISOR">Line Supervisor</option><option value="TECHNICIAN_MANAGER">Technician Manager</option><option value="TECHNICIAN">Technician</option><option value="ADMIN">Administrator</option></select></div>
+      <button class="btn" type="submit">Continue <span aria-hidden="true">→</span></button>
+    </form></section>
+  </main>
+</body></html>

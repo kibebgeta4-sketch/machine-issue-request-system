@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Maintenance Reports | Machine Care</title><link rel="stylesheet" href="/app.css"><script src="/app.js" defer></script></head>
+<body data-page="reports"><div class="shell">
+  <header class="topbar"><a class="brand" href="/"><span class="brand-mark">M</span><span>Machine Care<small>Maintenance operations</small></span></a><nav class="nav"><a href="/supervisor">Requests</a><a class="active" href="/reports">Reports</a></nav><div class="topbar-right"><span id="user-label" class="user-label"></span><button id="logout" class="btn secondary small">Sign out</button></div></header>
+  <header class="page-head"><div><p class="eyebrow">Operations intelligence</p><h1>Maintenance reports</h1><p>Review downtime, tasks, issue frequency, and preventive work.</p></div></header>
+  <div id="alert" class="alert"></div><main>
+    <section class="panel"><div class="panel-heading"><h2>Report filters</h2><small>Shift capacity defaults to 8 hours</small></div><div class="filters">
+      <div class="field"><label for="report-type">Report</label><select id="report-type"><option value="downtime">Downtime hierarchy</option><option value="tasks">Completed tasks</option><option value="issue-frequency">Issue frequency</option><option value="preventive">Preventive maintenance</option></select></div>
+      <div class="field"><label for="from">From</label><input id="from" type="date"></div><div class="field"><label for="to">To</label><input id="to" type="date"></div>
+      <div class="field"><label for="filter-department">Department</label><select id="filter-department"><option value="">All departments</option></select></div>
+      <div class="field"><label for="filter-machine">Machine</label><select id="filter-machine"><option value="">All machines</option></select></div>
+      <div class="btn-row"><button class="btn" id="view-report">View report</button></div>
+    </div></section>
+    <div class="kpis" id="report-kpis"></div>
+    <section class="panel"><div class="panel-heading"><h2>Report results</h2><div class="btn-row"><button class="btn secondary small export-btn" data-format="csv">↓ Export CSV</button><button class="btn secondary small export-btn" data-format="pdf">↓ Export PDF</button></div></div><div class="table-wrap"><table><thead id="report-head"></thead><tbody id="report-rows"><tr><td class="empty">Choose filters, then view a report.</td></tr></tbody></table></div></section>
+  </main>
+</div></body></html>

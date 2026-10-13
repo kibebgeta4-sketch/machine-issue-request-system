@@ -1,0 +1,24 @@
+{
+  "Cutting": {
+    "Travelling head cutting m/c": ["ASSC-1-02-001", "ASSC-1-02-002", "ASSC-1-02-003", "ASSC-1-02-004", "03/698/1"],
+    "Leather cutting m/c": ["03/699/01", "03/699/02", "03/699/03", "03/699/04", "03/699/05"],
+    "Leather splitting m/c": ["ASSC1-04-001", "03-682", "03-702"],
+    "Insole Trimming/Beveling m/c": ["ASSC-8-06-001", "ASSC-8-06-002", "03-209"],
+    "Insole molding m/c": ["ASSC-8-05-001", "ASSC-8-05-002", "03-208"],
+    "Shunk skiving m/c": ["ASSC-8-08-001", "ASSC-8-08-002"],
+    "Sole injection m/c": ["ASSC 4-01-001", "03-227"]
+  },
+  "Stitching": {
+    "Conveyor 30 meter": ["03-726/1", "03-726/2", "03-726/3", "ASSC-2-07-001"],
+    "Leather skiving m/c": ["02-700/1", "02-700/2", "02-700/3"],
+    "Zigzag stitching m/c(adler)": ["ASSC-2-10-001", "ASSC-2-10-002"],
+    "Postbed single needle stitching m/c (pfaff)": ["ASSC-2-09-001", "ASSC-2-09-002", "03-735/1"],
+    "Metal detector machine": ["ASSC-2-29-001"]
+  },
+  "Lasting final": {
+    "Back part molding m/c": ["ASSC 3-06-001", "ASSC 3-06-002", "03-744/1"],
+    "Toe Lasting m/c": ["ASSC 3-18-001", "ASSC 3-18-002", "03-717/1"],
+    "Cooling tunnel (Chiller m/c)": ["ASSC-3-24-001", "ASSC-3-24-002", "03-662/1"],
+    "Botom Sole stitching m/c": ["03-167"]
+  }
+}

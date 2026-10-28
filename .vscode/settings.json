@@ -14,5 +14,6 @@
             "database": "machine_issue_db",
             "username": "root"
         }
-    ]
+    ],
+    "liveServer.settings.port": 5501
 }

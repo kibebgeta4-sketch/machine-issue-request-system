@@ -13,12 +13,89 @@ async function api(url, options = {}) {
   return contentType.includes('application/json') ? response.json() : response;
 }
 
-function notify(message, success = false) {
-  const box = $('#alert');
-  if (!box) return;
-  box.textContent = message;
-  box.className = `alert show${success ? ' success' : ''}`;
-  window.setTimeout(() => box.classList.remove('show'), 5000);
+function notify(message, type = 'info') {
+  let container = $('.toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.className = 'toast-container';
+    container.setAttribute('aria-live', 'polite');
+    container.setAttribute('aria-relevant', 'additions');
+    document.body.append(container);
+  }
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${['success', 'error', 'info'].includes(type) ? type : 'info'}`;
+  toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+  const icon = document.createElement('span');
+  icon.className = 'toast-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = type === 'success' ? '✓' : type === 'error' ? '!' : 'i';
+  const text = document.createElement('span');
+  text.className = 'toast-message';
+  text.textContent = message;
+  const close = document.createElement('button');
+  close.className = 'toast-close';
+  close.type = 'button';
+  close.setAttribute('aria-label', 'Dismiss notification');
+  close.textContent = '×';
+  toast.append(icon, text, close);
+  container.append(toast);
+  const dismiss = () => {
+    if (toast.classList.contains('toast-leaving')) return;
+    toast.classList.add('toast-leaving');
+    window.setTimeout(() => toast.remove(), 200);
+  };
+  close.addEventListener('click', dismiss);
+  window.requestAnimationFrame(() => toast.classList.add('toast-visible'));
+  window.setTimeout(dismiss, 5000);
+}
+
+function confirmInApp(message, title = 'Confirm action') {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'app-modal-backdrop';
+    const modal = document.createElement('section');
+    modal.className = 'app-modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'app-modal-title');
+    const heading = document.createElement('h2');
+    heading.id = 'app-modal-title';
+    heading.textContent = title;
+    const content = document.createElement('p');
+    content.textContent = message;
+    const actions = document.createElement('div');
+    actions.className = 'app-modal-actions';
+    const cancel = document.createElement('button');
+    cancel.className = 'btn secondary';
+    cancel.type = 'button';
+    cancel.textContent = 'Cancel';
+    const confirm = document.createElement('button');
+    confirm.className = 'btn';
+    confirm.type = 'button';
+    confirm.textContent = 'Confirm';
+    actions.append(cancel, confirm);
+    modal.append(heading, content, actions);
+    backdrop.append(modal);
+    document.body.append(backdrop);
+    let settled = false;
+    const finish = (accepted) => {
+      if (settled) return;
+      settled = true;
+      backdrop.classList.remove('app-modal-visible');
+      window.setTimeout(() => backdrop.remove(), 180);
+      resolve(accepted);
+    };
+    cancel.addEventListener('click', () => finish(false));
+    confirm.addEventListener('click', () => finish(true));
+    backdrop.addEventListener('click', (event) => {
+      if (event.target === backdrop) finish(false);
+    });
+    backdrop.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') finish(false);
+    });
+    window.requestAnimationFrame(() => backdrop.classList.add('app-modal-visible'));
+    cancel.focus();
+  });
 }
 
 function statusBadge(status) {
@@ -114,7 +191,7 @@ async function initBreakdownForm() {
     const row = machineRows.get(`${departmentName}\u0000${machineName}\u0000${code}`);
     machineIdInput.value = row?.id || '';
     selectedCodeInput.value = row ? code : '';
-    if (!row) notify(`Machine code ${code} is not registered in the database.`);
+    if (!row) notify(`Machine code ${code} is not registered in the database.`, 'error');
   }
 
   departmentSelect.addEventListener('change', () => {
@@ -176,7 +253,7 @@ async function initLogin() {
       const user = await api('/api/auth/login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(form))) });
       const destinations = { LINE_SUPERVISOR: '/supervisor', TECHNICIAN_MANAGER: '/manager', TECHNICIAN: '/manager', ADMIN: '/admin' };
       window.location.assign(destinations[user.user.role] || '/');
-    } catch (error) { notify(error.message); }
+    } catch (error) { notify(error.message, 'error'); }
   });
 }
 
@@ -188,7 +265,7 @@ async function initSupervisor() {
     const form = event.currentTarget;
     const values = Object.fromEntries(new FormData(form));
     if (!values.machine_id || !values.machine_code) {
-      notify('Select a machine and its machine code.');
+      notify('Select a machine and its machine code.', 'error');
       return;
     }
     values.is_production_stopped = values.is_production_stopped === 'true';
@@ -200,9 +277,9 @@ async function initSupervisor() {
       $('#machine_id').disabled = true;
       $('#machine-code-single').disabled = true;
       $('#machine-code-select').disabled = true;
-      notify('Request submitted.', true);
+      notify('Request submitted.', 'success');
       await loadRequests();
-    } catch (error) { notify(error.message); }
+    } catch (error) { notify(error.message, 'error'); }
   });
   window.setInterval(() => loadRequests().catch(() => {}), 30000);
 }
@@ -223,7 +300,7 @@ async function initManager() {
       try {
         await api(`/api/requests/${button.dataset.request}/acknowledge`, { method: 'PATCH', body: JSON.stringify({}) });
         window.location.assign(button.dataset.actionUrl);
-      } catch (error) { notify(error.message); }
+      } catch (error) { notify(error.message, 'error'); }
     }));
   }
   const pending = rows.filter((row) => row.status === 'PENDING');
@@ -232,10 +309,12 @@ async function initManager() {
   $$('.accept-btn').forEach((button) => button.addEventListener('click', async () => {
     const requestId = button.dataset.request;
     const technicianId = $(`.assign-tech[data-request="${requestId}"]`).value;
-    if (!technicianId) return notify('Select a technician to assign.');
+    if (!technicianId) return notify('Select a technician to assign.', 'error');
     const assignmentExplanation = $(`.assignment-explanation[data-request="${requestId}"]`).value.trim();
-    try { await api(`/api/requests/${requestId}/accept`, { method: 'PATCH', body: JSON.stringify({ technician_id: technicianId, assignment_explanation: assignmentExplanation }) }); notify(`Request #${requestId} dispatched; repair clock started.`, true); await initManager(); }
-    catch (error) { notify(error.message); }
+    button.disabled = true;
+    try { await api(`/api/requests/${requestId}/accept`, { method: 'PATCH', body: JSON.stringify({ technician_id: technicianId, assignment_explanation: assignmentExplanation }) }); await initManager(); notify(`Request #${requestId} assigned. Start the repair when work begins.`, 'success'); }
+    catch (error) { notify(error.message, 'error'); }
+    finally { button.disabled = false; }
   }));
   const activeRows = rows.filter((row) => ['ACCEPTED', 'IN_PROGRESS'].includes(row.status));
   const resolveTable = $('#resolve-rows');
@@ -246,8 +325,10 @@ async function initManager() {
   const requestedTicket = new URLSearchParams(window.location.search).get('request');
   if (requestedTicket) document.getElementById(`ticket-${requestedTicket}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   $$('.start-repair').forEach((button) => button.addEventListener('click', async () => {
-    try { await api(`/api/requests/${button.dataset.request}/start`, { method: 'PATCH', body: JSON.stringify({}) }); notify(`Request #${button.dataset.request} is now in progress.`, true); await initManager(); }
-    catch (error) { notify(error.message); }
+    button.disabled = true;
+    try { await api(`/api/requests/${button.dataset.request}/start`, { method: 'PATCH', body: JSON.stringify({}) }); await initManager(); notify(`Request #${button.dataset.request} repair started.`, 'success'); }
+    catch (error) { notify(error.message, 'error'); }
+    finally { button.disabled = false; }
   }));
   $$('.resolve-open').forEach((button) => button.addEventListener('click', () => {
     $('#resolve-request-id').value = button.dataset.request;
@@ -265,8 +346,8 @@ async function initManager() {
     const form = event.currentTarget;
     const parts = $$('.parts-row', $('#parts-list')).map((row) => Object.fromEntries([...row.querySelectorAll('input')].map((input) => [input.name, input.value]))).filter((part) => part.part_name.trim());
     const data = { tasks_performed: $('#tasks-performed').value, root_cause_fixed: $('#root-cause-fixed').value, resolution_details: $('#resolution-details').value, spare_parts_used: parts };
-    try { await api(`/api/requests/${$('#resolve-request-id').value}/resolve`, { method: 'PATCH', body: JSON.stringify(data) }); notify('Repair marked resolved.', true); form.reset(); $('#parts-list').innerHTML = ''; $('#resolution-panel').classList.add('hidden'); await initManager(); }
-    catch (error) { notify(error.message); }
+    try { await api(`/api/requests/${$('#resolve-request-id').value}/resolve`, { method: 'PATCH', body: JSON.stringify(data) }); notify('Repair marked resolved.', 'success'); form.reset(); $('#parts-list').innerHTML = ''; $('#resolution-panel').classList.add('hidden'); await initManager(); }
+    catch (error) { notify(error.message, 'error'); }
   };
   if (!managerRefreshInterval) managerRefreshInterval = window.setInterval(() => initManager().catch(() => {}), 15000);
 }
@@ -289,7 +370,7 @@ async function initReports() {
     const data = await api(`${reportTypes[type]}?${params}`);
     const rows = Array.isArray(data) ? data : data.rows;
     if (data.summary) {
-      $('#report-kpis').innerHTML = `<div class="kpi"><span>Affected machines</span><strong>${data.summary.affected_machines}</strong></div><div class="kpi"><span>Downtime hours</span><strong>${data.summary.total_downtime_hours}</strong></div><div class="kpi"><span>Shift downtime</span><strong>${data.summary.downtime_percentage}%</strong></div>`;
+      $('#report-kpis').innerHTML = `<div class="kpi"><span>Affected machines</span><strong>${data.summary.affected_machines}</strong></div><div class="kpi"><span>Downtime minutes</span><strong>${data.summary.total_downtime_minutes}</strong></div><div class="kpi"><span>Downtime hours</span><strong>${data.summary.total_downtime_hours}</strong></div><div class="kpi"><span>Shift downtime</span><strong>${data.summary.downtime_percentage}%</strong></div>`;
     } else $('#report-kpis').innerHTML = '';
     const body = $('#report-rows');
     if (!rows.length) { body.innerHTML = '<tr><td class="empty">No records match these filters.</td></tr>'; return; }
@@ -297,7 +378,7 @@ async function initReports() {
     $('#report-head').innerHTML = `<tr>${columns.map((column) => `<th>${escapeHtml(column.replaceAll('_', ' '))}</th>`).join('')}</tr>`;
     body.innerHTML = rows.map((row) => `<tr>${columns.map((column) => `<td>${escapeHtml(row[column])}</td>`).join('')}</tr>`).join('');
   };
-  $('#view-report').addEventListener('click', () => render().catch((error) => notify(error.message)));
+  $('#view-report').addEventListener('click', () => render().catch((error) => notify(error.message, 'error')));
   $$('.export-btn').forEach((button) => button.addEventListener('click', () => {
     const params = reportFilters(); params.set('type', $('#report-type').value); params.set('format', button.dataset.format);
     window.location.assign(`/api/reports/export?${params}`);
@@ -308,6 +389,13 @@ async function initAdmin() {
   await loadLookups();
   const editDialog = $('#edit-user-dialog');
   const editForm = $('#edit-user-form');
+  const historyMachine = $('#history-machine');
+  const historyMachineCode = $('#history-machine-code');
+  let adminMachines = [];
+  historyMachine.addEventListener('change', () => {
+    const machine = adminMachines.find((item) => String(item.id) === historyMachine.value);
+    historyMachineCode.value = machine?.machine_code || '';
+  });
   const editRoleSelect = $('#edit-user-role');
   const editSpecializationField = $('#edit-specialization-field');
   const editSpecializationSelect = $('#edit-user-specialization');
@@ -332,6 +420,11 @@ async function initAdmin() {
   updateSpecializationVisibility();
   const refresh = async () => {
     const [users, machines] = await Promise.all([api('/api/admin/users'), api('/api/admin/machines')]);
+    const selectedMachine = historyMachine.value;
+    adminMachines = machines;
+    await fillSelect('#history-machine', machines, 'Select machine', 'id', (machine) => `${machine.name} · ${machine.machine_code}`);
+    if (machines.some((machine) => String(machine.id) === selectedMachine)) historyMachine.value = selectedMachine;
+    historyMachine.dispatchEvent(new Event('change'));
     $('#users-rows').innerHTML = users.map((user) => `<tr><td>${escapeHtml(user.name)}</td><td>${escapeHtml(user.username)}</td><td>${escapeHtml(user.email)}</td><td>${escapeHtml(user.role.replaceAll('_', ' '))}</td><td>${escapeHtml($('#department_id').querySelector(`option[value="${user.department_id}"]`)?.textContent || '—')}</td><td>${user.role === 'TECHNICIAN' ? `<select class="user-specialization" data-user="${user.id}" aria-label="${escapeHtml(user.name)} specialization"><option value="">Select specialization</option><option value="MECHANICAL" ${user.specialization === 'MECHANICAL' ? 'selected' : ''}>Mechanical</option><option value="ELECTRICAL" ${user.specialization === 'ELECTRICAL' ? 'selected' : ''}>Electrical</option><option value="UTILITY_IT" ${user.specialization === 'UTILITY_IT' ? 'selected' : ''}>Utility / IT</option></select>` : '—'}</td><td>${user.active ? 'Active' : 'Inactive'}</td><td><div class="btn-row"><button class="btn secondary small edit-user" data-user="${user.id}">Edit</button><button class="btn ${user.active ? 'danger' : 'secondary'} small toggle-user-active" data-user="${user.id}" data-active="${user.active ? 'false' : 'true'}">${user.active ? 'Deactivate' : 'Activate'}</button>${user.role === 'TECHNICIAN' ? `<button class="btn secondary small save-specialization" data-user="${user.id}">Save specialization</button>` : ''}</div></td></tr>`).join('') || '<tr><td class="empty" colspan="8">No users found.</td></tr>';
     $$('.edit-user').forEach((button) => button.addEventListener('click', () => {
       const user = users.find((item) => String(item.id) === button.dataset.user);
@@ -350,24 +443,54 @@ async function initAdmin() {
     $$('.toggle-user-active').forEach((button) => button.addEventListener('click', async () => {
       const active = button.dataset.active === 'true';
       const user = users.find((item) => String(item.id) === button.dataset.user);
-      if (!user || !window.confirm(`${active ? 'Activate' : 'Deactivate'} ${user.name}'s account?`)) return;
+      if (!user || !(await confirmInApp(`${active ? 'Activate' : 'Deactivate'} ${user.name}'s account?`, 'Update account status'))) return;
       try {
         await api(`/api/admin/users/${button.dataset.user}/active`, { method: 'PATCH', body: JSON.stringify({ active }) });
-        notify(`User account ${active ? 'activated' : 'deactivated'}.`, true);
+        notify(`User account ${active ? 'activated' : 'deactivated'}.`, 'success');
         await refresh();
-      } catch (error) { notify(error.message); }
+      } catch (error) { notify(error.message, 'error'); }
     }));
     $$('.save-specialization').forEach((button) => button.addEventListener('click', async () => {
       const select = $(`.user-specialization[data-user="${button.dataset.user}"]`);
       try {
         await api(`/api/admin/users/${button.dataset.user}/specialization`, { method: 'PATCH', body: JSON.stringify({ specialization: select.value }) });
-        notify('Technician specialization saved.', true);
+        notify('Technician specialization saved.', 'success');
         await refresh();
-      } catch (error) { notify(error.message); }
+      } catch (error) { notify(error.message, 'error'); }
     }));
     $('#machines-rows').innerHTML = machines.map((machine) => `<tr><td>${escapeHtml(machine.name)}</td><td>${escapeHtml(machine.machine_code)}</td><td>${escapeHtml(machine.department_name)}</td><td>${machine.active ? 'Active' : 'Inactive'}</td></tr>`).join('') || '<tr><td class="empty" colspan="4">No machines found.</td></tr>';
   };
   await refresh();
+  $('#history-from').addEventListener('change', () => {
+    $('#history-to').min = $('#history-from').value;
+  });
+  $('#history-to').addEventListener('change', () => {
+    $('#history-from').max = $('#history-to').value;
+  });
+  $('#history-delete-form').onsubmit = async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const machine = adminMachines.find((item) => String(item.id) === historyMachine.value);
+    if (!machine) return notify('Select a machine before deleting report history.', 'error');
+    const from = $('#history-from').value;
+    const to = $('#history-to').value;
+    if (from > to) return notify('The start date must be on or before the end date.', 'error');
+    if (!(await confirmInApp(`Permanently delete issue reports for ${machine.name} (${machine.machine_code}) from ${from} through ${to}? This cannot be undone.`, 'Delete report history'))) return;
+    const button = form.querySelector('button[type="submit"]');
+    button.disabled = true;
+    try {
+      const result = await api('/api/admin/report-history', {
+        method: 'DELETE',
+        body: JSON.stringify({ machine_id: machine.id, machine_code: machine.machine_code, from, to })
+      });
+      notify(`${result.deleted} report ${result.deleted === 1 ? 'record' : 'records'} deleted.`, 'success');
+      form.reset();
+      historyMachineCode.value = '';
+      $('#history-to').min = '';
+      $('#history-from').max = '';
+    } catch (error) { notify(error.message, 'error'); }
+    finally { button.disabled = false; }
+  };
   editForm.onsubmit = async (event) => {
     event.preventDefault();
     const formData = Object.fromEntries(new FormData(editForm));
@@ -380,15 +503,15 @@ async function initAdmin() {
       editDialog.close();
       try {
         await refresh();
-        notify('User account updated.', true);
+        notify('User account updated.', 'success');
       } catch (error) {
-        notify(`User account was saved, but the user list could not be refreshed: ${error.message}`);
+        notify(`User account was saved, but the user list could not be refreshed: ${error.message}`, 'error');
       }
-    } catch (error) { notify(error.message); }
+    } catch (error) { notify(error.message, 'error'); }
     finally { saveButton.disabled = false; }
   };
-  $('#admin-user-form').onsubmit = async (event) => { event.preventDefault(); const form = event.currentTarget; try { await api('/api/admin/users', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(form))) }); form.reset(); updateSpecializationVisibility(); notify('User created.', true); await refresh(); } catch (error) { notify(error.message); } };
-  $('#admin-machine-form').onsubmit = async (event) => { event.preventDefault(); const form = event.currentTarget; try { await api('/api/admin/machines', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(form))) }); form.reset(); notify('Machine created.', true); await refresh(); } catch (error) { notify(error.message); } };
+  $('#admin-user-form').onsubmit = async (event) => { event.preventDefault(); const form = event.currentTarget; try { await api('/api/admin/users', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(form))) }); form.reset(); updateSpecializationVisibility(); notify('User created.', 'success'); await refresh(); } catch (error) { notify(error.message, 'error'); } };
+  $('#admin-machine-form').onsubmit = async (event) => { event.preventDefault(); const form = event.currentTarget; try { await api('/api/admin/machines', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(form))) }); form.reset(); notify('Machine created.', 'success'); await refresh(); } catch (error) { notify(error.message, 'error'); } };
 }
 
 async function init() {
@@ -396,7 +519,7 @@ async function init() {
   const boot = { login: initLogin, supervisor: initSupervisor, manager: initManager, reports: initReports, admin: initAdmin }[page];
   if (boot) {
     try { if (page !== 'login') { const result = await api('/api/auth/me'); const label = $('#user-label'); if (label) label.textContent = `${result.user.name} · ${result.user.role.replaceAll('_', ' ')}`; } await boot(); }
-    catch (error) { if (page !== 'login' && error.message === 'Sign in to continue.') window.location.replace('/'); else notify(error.message); }
+    catch (error) { if (page !== 'login' && error.message === 'Sign in to continue.') window.location.replace('/'); else notify(error.message, 'error'); }
   }
   $('#logout')?.addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); window.location.assign('/'); });
 }

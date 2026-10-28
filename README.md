@@ -30,7 +30,9 @@ The app listens on all network interfaces by default (`HOST=0.0.0.0`), while MyS
 4. Start the application on the server with `npm start`. Confirm the console reports that it is listening and database initialization succeeded.
 5. On another device on the same LAN, browse to `http://172.16.1.85:5000`. If it cannot connect, check the server's IP/subnet/gateway, verify the port is listening, and confirm that the firewall rule and LAN routing permit the connection.
 
-On startup, the server ensures a `Technician Department` department exists and creates an initial administrator if the username `admin` is not already present. Sign in with username `admin`, password `admin123`, and role `Administrator`. This is a temporary development credential: change it before exposing the app to a network. The administrator can create accounts for all roles from the Administration page.
+The application uses plain HTTP and does not require TLS certificates. Traffic, including login sessions, is not encrypted; use it only on a trusted network.
+
+On startup, the server ensures a `Technician Department` department exists and creates an initial administrator if the username `admin` is not already present. Sign in with username `admin` and password `admin123`; the login page has no role selection, and the account role is determined securely from the database after authentication. This is a temporary development credential: change it before exposing the app to a network. The administrator can create accounts for all roles from the Administration page.
 
 The server checks database connectivity before listening. On the Administration page, admins can edit user names, usernames, emails, roles, departments, technician specializations, and passwords; they can also activate or deactivate accounts. Passwords are only changed when a new password is entered, and the app prevents deactivating your own account or removing the last active administrator. Reports accept `from`, `to`, `department_id`, and `machine_id` query parameters. Session cookies are used for login and role-checked workflow APIs.
 

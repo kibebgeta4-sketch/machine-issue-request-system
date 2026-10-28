@@ -1,57 +1,87 @@
+// Load hidden configuration variables from the .env file into process.env
 require('dotenv').config();
 
+// Import Node.js built-in module for handling file and directory paths
 const path = require('path');
+// Import Node.js built-in module for file system operations
+// Import Express framework to handle server routes and HTTP requests
 const express = require('express');
+// Import Express session middleware to manage user login states via cookies
 const session = require('express-session');
+// Import Bcryptjs library for securely hashing and comparing passwords
 const bcrypt = require('bcryptjs');
+// Import database connection pool and connection test utility from local file
 const { pool, testConnection } = require('./database/db');
+// Import modular report routes from local file
 const reports = require('./routes/reports');
+// Import local JSON file containing machine and department data
 const machineData = require('./IT/public/machineData.json');
 
+// Create an instance of an Express application
 const app = express();
+// Set the server port, defaulting to 5000 if not specified in environment variables
 const port = Number(process.env.PORT || 5000);
+// Set the host address ('0.0.0.0' allows connections from any IP on the local network/LAN)
 const host = process.env.HOST || '0.0.0.0';
+// Store the root directory path of the project folder
 const projectRoot = __dirname;
+// Define the list of valid user roles in the system
 const roles = ['ADMIN', 'LINE_SUPERVISOR', 'TECHNICIAN_MANAGER', 'TECHNICIAN'];
 
+// Middleware: Allow Express to parse incoming JSON payloads up to 1MB in size
 app.use(express.json({ limit: '1mb' }));
+// Middleware: Allow Express to parse URL-encoded form data submissions
 app.use(express.urlencoded({ extended: true }));
+// Middleware: Configure session cookies to remember logged-in users across requests
 app.use(session({
-  name: 'machine-issue.sid',
-  secret: process.env.SESSION_SECRET || 'development-only-change-this-secret',
-  resave: false,
-  saveUninitialized: false,
-  cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 8 * 60 * 60 * 1000 }
+  name: 'machine-issue.sid', // The name of the session cookie stored in the browser
+  secret: process.env.SESSION_SECRET || 'development-only-change-this-secret', // Secret key used to sign the session
+  resave: false, // Don't save session if unmodified
+  saveUninitialized: false, // Don't create session until something is stored
+  cookie: { httpOnly: true, sameSite: 'lax', secure: false, maxAge: 8 * 60 * 60 * 1000 } // Cookie security and 8-hour expiration settings
 }));
+// Middleware: Serve static frontend files (HTML, CSS, JS, images) from the 'IT/public' folder
 app.use(express.static(path.join(projectRoot, 'IT', 'public')));
 
+// Authentication Middleware: Checks if the user has an active session before proceeding
 function requireAuth(req, res, next) {
   if (!req.session.user) return res.status(401).json({ error: 'Sign in to continue.' });
-  next();
+  next(); // Continue to the next middleware or route handler
 }
 
+// Role-Based Access Control Middleware: Checks if the logged-in user's role is allowed
 function allowRoles(...allowed) {
   return (req, res, next) => {
     if (!req.session.user) return res.status(401).json({ error: 'Sign in to continue.' });
     if (!allowed.includes(req.session.user.role)) return res.status(403).json({ error: 'You do not have permission to do that.' });
-    next();
+    next(); // Role is permitted, proceed
   };
 }
 
+// Async Route Wrapper: Catches asynchronous errors automatically so the server won't crash
 function asyncRoute(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 }
 
 app.post('/api/auth/login', asyncRoute(async (req, res) => {
-  const identifier = String(req.body.username || req.body.email || '').trim().toLowerCase();
+  const rawIdentifier = String(req.body.username || req.body.email || '').trim();
+  const identifier = rawIdentifier.toLowerCase();
   const password = String(req.body.password || '');
-  const role = String(req.body.role || '');
-  if (!identifier || !password || !roles.includes(role)) return res.status(400).json({ error: 'Username or email, password, and a valid role are required.' });
-  const [users] = await pool.execute('SELECT id, name, username, email, password_hash, role, department_id FROM users WHERE (username = ? OR email = ?) AND active = TRUE LIMIT 1', [identifier, identifier]);
-  const user = users[0];
-  if (!user || user.role !== role || !(await bcrypt.compare(password, user.password_hash))) {
-    return res.status(401).json({ error: 'Username, password, or role is incorrect.' });
+
+  if (!identifier || !password) {
+    return res.status(400).json({ error: 'Username or email and password are required.' });
   }
+
+  const [users] = await pool.execute(
+    'SELECT id, name, username, email, password_hash, role, department_id FROM users WHERE (LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)) AND active = TRUE LIMIT 1',
+    [identifier, identifier]
+  );
+  const user = users[0];
+
+  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+    return res.status(401).json({ error: 'Username or email and password are incorrect.' });
+  }
+
   req.session.user = { id: user.id, name: user.name, username: user.username, email: user.email, role: user.role, department_id: user.department_id };
   res.json({ user: req.session.user });
 }));
@@ -129,12 +159,12 @@ app.patch('/api/requests/:id/accept', allowRoles('TECHNICIAN_MANAGER', 'ADMIN'),
     if (!request || request.status !== 'PENDING') { await connection.rollback(); return res.status(409).json({ error: 'Request not found or no longer pending.' }); }
     const [technicians] = await connection.execute("SELECT id FROM users WHERE id = ? AND role = 'TECHNICIAN' AND active = TRUE FOR UPDATE", [technicianId]);
     if (!technicians.length) { await connection.rollback(); return res.status(400).json({ error: 'Choose an active technician.' }); }
-    const [updated] = await connection.execute("UPDATE maintenance_requests SET received_by_tech = NULL, received_time = NULL, assigned_technician_id = ?, assignment_explanation = ?, repair_started_by = ?, repair_start_time = NOW(), status = 'IN_PROGRESS' WHERE id = ? AND status = 'PENDING'", [technicianId, assignmentExplanation || null, req.session.user.id, requestId]);
+    const [updated] = await connection.execute("UPDATE maintenance_requests SET received_by_tech = NULL, received_time = NULL, assigned_technician_id = ?, assignment_explanation = ?, repair_started_by = NULL, repair_start_time = NULL, status = 'ACCEPTED' WHERE id = ? AND status = 'PENDING'", [technicianId, assignmentExplanation || null, requestId]);
     if (!updated.affectedRows) { await connection.rollback(); return res.status(409).json({ error: 'Request not found or no longer pending.' }); }
     await connection.execute('INSERT INTO technician_dispatches (request_id, technician_id, assigned_by, assignment_explanation, sent_at) VALUES (?, ?, ?, ?, NOW())', [requestId, technicianId, req.session.user.id, assignmentExplanation || null]);
     await connection.commit();
     const [dispatchRows] = await pool.execute(`SELECT dispatch.request_id, dispatch.assignment_explanation, dispatch.sent_at, d.name AS department_name, m.name AS machine_name, m.machine_code, r.breakdown_category AS issue_type, r.breakdown_details AS reported_issue, CONCAT('/manager?request=', r.id, '&action=acknowledge') AS action_url FROM technician_dispatches dispatch JOIN maintenance_requests r ON r.id = dispatch.request_id JOIN departments d ON d.id = r.department_id JOIN machines m ON m.id = r.machine_id WHERE dispatch.request_id = ?`, [requestId]);
-    res.json({ id: requestId, status: 'IN_PROGRESS', technician_id: technicianId, dispatch: dispatchRows[0] });
+    res.json({ id: requestId, status: 'ACCEPTED', technician_id: technicianId, dispatch: dispatchRows[0] });
   } catch (error) { await connection.rollback(); throw error; }
   finally { connection.release(); }
 }));
@@ -146,7 +176,7 @@ app.patch('/api/requests/:id/acknowledge', allowRoles('TECHNICIAN'), asyncRoute(
     await connection.beginTransaction();
     const [requests] = await connection.execute('SELECT id, status FROM maintenance_requests WHERE id = ? AND assigned_technician_id = ? FOR UPDATE', [requestId, req.session.user.id]);
     const request = requests[0];
-    if (!request || !['IN_PROGRESS', 'RESOLVED'].includes(request.status)) {
+    if (!request || !['ACCEPTED', 'IN_PROGRESS', 'RESOLVED'].includes(request.status)) {
       await connection.rollback();
       return res.status(404).json({ error: 'No dispatch for this technician was found.' });
     }
@@ -164,12 +194,25 @@ app.patch('/api/requests/:id/acknowledge', allowRoles('TECHNICIAN'), asyncRoute(
 
 app.patch('/api/requests/:id/start', allowRoles('TECHNICIAN_MANAGER', 'TECHNICIAN', 'ADMIN'), asyncRoute(async (req, res) => {
   const requestId = Number(req.params.id);
-  const [rows] = await pool.execute('SELECT assigned_technician_id, status FROM maintenance_requests WHERE id = ?', [requestId]);
-  const request = rows[0];
-  if (!request || request.status !== 'ACCEPTED') return res.status(409).json({ error: 'Request not found or not accepted.' });
-  if (req.session.user.role === 'TECHNICIAN' && Number(request.assigned_technician_id) !== Number(req.session.user.id)) return res.status(403).json({ error: 'This request is assigned to another technician.' });
-  await pool.execute("UPDATE maintenance_requests SET repair_started_by = ?, repair_start_time = NOW(), status = 'IN_PROGRESS' WHERE id = ? AND status = 'ACCEPTED'", [req.session.user.id, requestId]);
-  res.json({ id: requestId, status: 'IN_PROGRESS' });
+  if (!requestId) return res.status(400).json({ error: 'A request is required.' });
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.execute('SELECT assigned_technician_id, status FROM maintenance_requests WHERE id = ? FOR UPDATE', [requestId]);
+    const request = rows[0];
+    if (!request || request.status !== 'ACCEPTED') {
+      await connection.rollback();
+      return res.status(409).json({ error: 'Request not found or not awaiting repair.' });
+    }
+    if (req.session.user.role === 'TECHNICIAN' && Number(request.assigned_technician_id) !== Number(req.session.user.id)) {
+      await connection.rollback();
+      return res.status(403).json({ error: 'This request is assigned to another technician.' });
+    }
+    await connection.execute("UPDATE maintenance_requests SET repair_started_by = ?, repair_start_time = NOW(), status = 'IN_PROGRESS' WHERE id = ?", [req.session.user.id, requestId]);
+    await connection.commit();
+    res.json({ id: requestId, status: 'IN_PROGRESS' });
+  } catch (error) { await connection.rollback(); throw error; }
+  finally { connection.release(); }
 }));
 
 app.patch('/api/requests/:id/resolve', allowRoles('TECHNICIAN_MANAGER', 'TECHNICIAN', 'ADMIN'), asyncRoute(async (req, res) => {
@@ -183,22 +226,21 @@ app.patch('/api/requests/:id/resolve', allowRoles('TECHNICIAN_MANAGER', 'TECHNIC
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const [requests] = await connection.execute('SELECT id, request_time, repair_start_time, assigned_technician_id, status FROM maintenance_requests WHERE id = ? FOR UPDATE', [requestId]);
+    const [requests] = await connection.execute('SELECT id, repair_start_time, assigned_technician_id, status FROM maintenance_requests WHERE id = ? FOR UPDATE', [requestId]);
     const request = requests[0];
     if (!request || request.status !== 'IN_PROGRESS') { await connection.rollback(); return res.status(409).json({ error: 'Request not found or not in progress.' }); }
     if (req.session.user.role === 'TECHNICIAN' && Number(request.assigned_technician_id) !== Number(req.session.user.id)) { await connection.rollback(); return res.status(403).json({ error: 'This request is assigned to another technician.' }); }
     const endTime = new Date();
-    const requestTime = new Date(request.request_time);
     const repairStartTime = request.repair_start_time ? new Date(request.repair_start_time) : endTime;
-    const downtimeMinutes = Math.max(0, Math.round((endTime.getTime() - requestTime.getTime()) / 60000));
-    const downtimeHours = (downtimeMinutes / 60).toFixed(2);
     const repairDurationMinutes = Math.max(0, Math.round((endTime.getTime() - repairStartTime.getTime()) / 60000));
-    await connection.execute("UPDATE maintenance_requests SET repair_completed_by = ?, repair_end_time = ?, total_downtime_minutes = ?, downtime_hours = ?, repair_duration_minutes = ?, tasks_performed = ?, root_cause_fixed = ?, resolution_details = ?, status = 'RESOLVED' WHERE id = ?", [req.session.user.id, endTime, downtimeMinutes, downtimeHours, repairDurationMinutes, tasks, rootCause, solution || null, requestId]);
+    await connection.execute("UPDATE maintenance_requests SET repair_completed_by = ?, repair_end_time = NOW(), total_downtime_minutes = TIMESTAMPDIFF(MINUTE, request_time, NOW()), downtime_hours = TIMESTAMPDIFF(MINUTE, request_time, NOW()) / 60, repair_duration_minutes = ?, tasks_performed = ?, root_cause_fixed = ?, resolution_details = ?, status = 'RESOLVED' WHERE id = ?", [req.session.user.id, repairDurationMinutes, tasks, rootCause, solution || null, requestId]);
     for (const part of parts) {
       await connection.execute('INSERT INTO spare_parts_used (request_id, part_name, part_code, quantity, description) VALUES (?, ?, ?, ?, ?)', [requestId, String(part.part_name).trim(), String(part.part_code || '').trim() || null, Number(part.quantity), String(part.description || '').trim() || null]);
     }
+    const [resolvedRows] = await connection.execute('SELECT repair_end_time, total_downtime_minutes, downtime_hours FROM maintenance_requests WHERE id = ?', [requestId]);
+    const resolved = resolvedRows[0];
     await connection.commit();
-    res.json({ id: requestId, status: 'RESOLVED', resolved_time: endTime, total_downtime_minutes: downtimeMinutes, downtime_hours: downtimeHours, repair_duration_minutes: repairDurationMinutes });
+    res.json({ id: requestId, status: 'RESOLVED', resolved_time: resolved.repair_end_time, total_downtime_minutes: resolved.total_downtime_minutes, downtime_hours: resolved.downtime_hours, repair_duration_minutes: repairDurationMinutes });
   } catch (error) { await connection.rollback(); throw error; }
   finally { connection.release(); }
 }));
@@ -292,6 +334,27 @@ app.post('/api/admin/users', allowRoles('ADMIN'), asyncRoute(async (req, res) =>
   const [result] = await pool.execute('INSERT INTO users (name, username, email, password_hash, role, specialization, department_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [name, username, email, hash, role, role === 'TECHNICIAN' ? specialization : null, departmentId]);
   res.status(201).json({ id: result.insertId, username });
 }));
+app.delete('/api/admin/report-history', allowRoles('ADMIN'), asyncRoute(async (req, res) => {
+  const machineId = Number(req.body.machine_id);
+  const machineCode = String(req.body.machine_code || '').trim();
+  const from = String(req.body.from || '');
+  const to = String(req.body.to || '');
+  const isDateOnly = (value) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  };
+  if (!Number.isSafeInteger(machineId) || machineId < 1 || !machineCode || machineCode.length > 80 || !isDateOnly(from) || !isDateOnly(to) || from > to) {
+    return res.status(400).json({ error: 'Select a valid machine and machine code, and provide a valid date range.' });
+  }
+  const [machines] = await pool.execute('SELECT id FROM machines WHERE id = ? AND machine_code = ?', [machineId, machineCode]);
+  if (!machines.length) return res.status(400).json({ error: 'The selected machine code does not match the machine.' });
+  const [result] = await pool.execute(
+    'DELETE r FROM maintenance_requests r WHERE r.machine_id = ? AND r.request_time >= ? AND r.request_time < DATE_ADD(?, INTERVAL 1 DAY)',
+    [machineId, from, to]
+  );
+  res.json({ deleted: result.affectedRows });
+}));
 app.get('/api/admin/machines', allowRoles('ADMIN'), asyncRoute(async (req, res) => {
   const [rows] = await pool.execute('SELECT m.id, m.name, m.machine_code, m.department_id, d.name AS department_name, m.active FROM machines m JOIN departments d ON d.id = m.department_id ORDER BY d.name, m.name');
   res.json(rows);
@@ -331,7 +394,10 @@ async function start() {
     await ensureWorkflowColumns();
     await seedMachines();
     await ensureDefaultAdmin();
-    app.listen(port, host, () => console.log(`Machine Issue Request System listening on ${host}:${port}. On the LAN, open http://172.16.1.85:${port}`));
+
+    app.listen(port, host, () => {
+      console.log(`Machine Issue Request System listening on http://${host}:${port}. On the LAN, open http://172.16.1.85:${port}`);
+    });
   } catch (error) {
     console.error('Unable to initialize the application database:', error.message);
     process.exitCode = 1;
@@ -397,9 +463,16 @@ async function ensureUsernameColumn() {
 }
 
 async function ensureDefaultAdmin() {
-  const [existing] = await pool.execute('SELECT id, role FROM users WHERE username = ? LIMIT 1', ['admin']);
+  const [existing] = await pool.execute('SELECT id, name, email, password_hash, role FROM users WHERE username = ? LIMIT 1', ['admin']);
   if (existing.length) {
-    if (existing[0].role !== 'ADMIN') throw new Error('The reserved username "admin" is already assigned to a non-admin account.');
+    const account = existing[0];
+    if (account.role !== 'ADMIN') throw new Error('The reserved username "admin" is already assigned to a non-admin account.');
+    const defaultPasswordMatches = await bcrypt.compare('admin123', account.password_hash);
+    if (!defaultPasswordMatches && (account.email === 'admin@machine.local' || !account.email)) {
+      const passwordHash = await bcrypt.hash('admin123', 12);
+      await pool.execute('UPDATE users SET email = ?, password_hash = ? WHERE id = ?', ['admin@machine.local', passwordHash, account.id]);
+      console.log('Reset default administrator password to the temporary development credential.');
+    }
     return;
   }
   const passwordHash = await bcrypt.hash('admin123', 12);

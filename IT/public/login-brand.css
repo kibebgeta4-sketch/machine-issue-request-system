@@ -1,0 +1,2 @@
+.login-company-logo{display:block;width:clamp(180px,24vw,260px);max-height:170px;margin:0 0 26px;object-fit:contain;object-position:left center;padding:7px;border:1px solid rgba(255,255,255,.3);border-radius:8px;background:#fff;box-shadow:0 12px 34px rgba(0,0,0,.16)}
+@media(max-width:600px){.login-company-logo{width:190px;max-height:125px;margin-bottom:20px}}
